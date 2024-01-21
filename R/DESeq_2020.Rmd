@@ -1,0 +1,393 @@
+---
+title: "DESeq2"
+author: "Anna Duenser"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+#github-repo: "https://github.com/"
+output:
+  bookdown::gitbook:
+    config:
+      fontsettings:
+        theme: night
+        family: sans
+        size: 2
+  bookdown::pdf_document2:
+    keep_tex: true
+header-includes:
+- \usepackage{hyperref}
+- \usepackage{float}
+- \usepackage{caption}
+- \captionsetup[figure]{font=small}
+#subtitle: University of Graz, Institut for Biology
+#bibliography: bib.bibtex
+#biblio-style: authoryear
+#link-citations: yes
+urlcolor: blue
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(
+  fig.pos   = "H",
+  out.extra = "",
+  fig.align = "center",
+  out.width = "100%",
+  echo      = FALSE,
+  include   = FALSE
+  )
+# Our Libraries
+VLIBS <- c("tidyverse", "patchwork", "here", "readxl", "bookdown")
+# Use Colors in Plots
+# https://stackoverflow.com/questions/42458412/plotting-data-by-color-variable-with-ggplot2-in-r#comment72062654_42458412
+colorBlindGrey  <- c("#C5C1C1" ,"#464343", "#E69F00", "#56B4E9", "#009E73",
+                       "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+F_LoadLibs <- function(x){
+  print(x)
+  if(!require(x, character.only = TRUE)) install.packages(x); library(x, character.only = TRUE);
+  return(T)
+}
+# https://stackoverflow.com/questions/62140483/how-to-interpret-dplyr-message-summarise-regrouping-output-by-x-override
+options(dplyr.summarise.inform=F)
+# https://stackoverflow.com/questions/13286531/how-to-suppress-warnings-when-plotting-with-ggplot
+options(warn=-1)
+sapply(VLIBS, F_LoadLibs)
+rm(VLIBS, F_LoadLibs)
+
+```
+
+Define file paths and load RNASeq_Settings.R 
+
+```{r}
+
+STAGE <- "A"
+FILE.DIR     <- "~/Google_Drive/KFU_RNAseq/R_files/DESeq/Data"
+GENE.MATRIX  <- paste("gene_count_matrix_", STAGE, ".csv", sep = "")
+PHENOTYPE.TABLE <- paste("phenotype_", STAGE, ".txt", sep = "")
+PATH.OUT <- paste(FILE.DIR, "/Output/", STAGE, "/", sep = "")
+DATE <- format(Sys.time(), "%m%d%Y")
+
+
+# set directory 
+setwd(FILE.DIR)
+
+# RNASeq_Settings.R
+source(file = "~/Google_Drive/KFU_RNAseq/R_files/RNASeq_Settings.R")
+
+```
+
+Create design matrix, and group by species + experimental. Essentially just paste the two together and use this as the model input. Same as creating a new column in the sample table (GhOJ, GhPJ ...)
+```{r}
+
+dds <- DESeq2::DESeqDataSetFromMatrix(countData = gcmatrix,
+                              colData = sampleTable,
+                              design= ~ species + experimental)
+
+dds$group <- factor(paste0( dds$experimental, dds$species))
+design(dds) <- ~ group
+
+dds <- DESeq2::DESeq(dds)
+
+# normalization
+vsd <- varianceStabilizingTransformation(dds)
+
+# create matrix from vst assay
+expr_matrix <- (assay(vsd))
+
+# write out normalized expression matrix
+write.csv(as.data.frame(expr_matrix), 
+          file = paste("normalized_gcmatrix_", STAGE,"_", DATE, ".csv", sep = ""))
+```
+
+```{r}
+
+resultsNames(dds)
+
+my_log <- file(paste(PATH.OUT,"log_DESeq2_R_", DATE, ".txt", sep = ""))
+sink(my_log, append = TRUE, type = "output", split = TRUE)
+
+
+L.LOOP <- list(
+  first = c("group", "OJMl", "OJPs"),
+  second = c("group", "PJMl", "PJPs"),
+  third = c("group", "OJNo", "OJPs"),
+  fourth = c("group", "PJNo", "PJPs"),
+  fifth = c("group", "OJHt", "OJPs"),
+  sixed = c("group", "PJHt", "PJPs"),
+  seventh = c("group", "OJGh", "OJPs"),
+  eight = c("group", "PJGh", "PJPs"),
+  neinth = c("group", "OJHt" , "OJMl"),
+  tenth = c("group", "PJHt", "PJMl"),
+  eleventh = c("group", "OJHt", "OJNo"),
+  tvelvth = c("group", "PJHt", "PJNo"),
+  thirteenth = c("group", "OJGh", "OJHt"),
+  fourteenth = c("group", "PJGh", "PJHt"),
+  fifteenth = c("group", "OJMl" , "OJNo"),
+  sixteenth = c("group", "PJMl", "PJNo"),
+  seventeenth = c("group", "OJGh", "OJMl"),
+  eighteenth = c("group", "PJGh", "PJMl"),
+  neinteenth = c("group", "OJGh", "OJNo"),
+  twentiest = c("group", "PJGh", "PJNo"),
+  twentyfrist = c("group", "OJGh", "PJGh"),
+  twentysecond = c("group", "OJPs", "PJPs"),
+  twentythird = c("group", "OJHt", "PJHt"),
+  twentyfourth = c("group", "OJMl", "PJMl"),
+  twentyfifth = c("group", "OJNo", "PJNo")
+)
+
+L.RES = list()
+for(i in L.LOOP){
+  temp_string = paste(STAGE)
+  print(temp_string)
+  
+  temp_coef = paste(i[1], paste(i[2], i[3], sep = "_vs_"), sep = "_" )
+  print(temp_coef)
+  
+  temp_title = paste(i[2], i[3], sep = " vs ")
+  temp_title = paste(temp_title, STAGE, sep = " ")
+  
+  L.RES[[temp_string]] = list()
+  temp_res <- results(dds, contrast = i, alpha = 0.05)
+  L.RES[[temp_string]][["result"]] = temp_res
+  
+  temp_shrink <- lfcShrink(dds, contrast = i, type="ashr")
+  L.RES[[temp_string]][["lfcShrink"]] = temp_shrink
+  
+  pdf(paste(PATH.OUT, "MA_plots/", STAGE, "_MA_",temp_coef,"_", DATE, ".pdf", sep = ""))
+  DESeq2::plotMA(temp_shrink, ylim = c(-2,2), main = temp_title)
+  dev.off()
+  
+  summary(temp_res)
+  summary(temp_shrink)
+  
+  pdf(paste(PATH.OUT,"Volcano_plots/", STAGE,"_VOLCANO_",temp_coef,"_", DATE, ".pdf", sep = ""))
+  par(mar=c(5,5,5,5), cex = 1.0, cex.main = 1.4, cex.axis = 1.4, cex.lab = 1.4)
+  topT <- as.data.frame(temp_shrink)
+  with(topT, plot(log2FoldChange, -log10(padj), 
+                  pch = 20, main = temp_title, 
+                  cex = 1.0, 
+                  xlab = bquote(~Log[2]~fold~change), 
+                  ylab = bquote(~-log[10]~Q~value)))
+  with(subset(topT, 
+              padj<0.05 & abs(log2FoldChange)>2), 
+       points(log2FoldChange, -log10(padj), pch = 20, col = "red", cex = 0.5))
+  abline(v = 0, col = "black", lty = 3, lwd = 1.0)
+  abline(v = -2, col = "black", lty = 4, lwd = 2.0)
+  abline(v = 2, col = "black", lty = 4, lwd = 2.0)
+  abline(h = -log10(max(topT$pvalue[topT$padj<0.05], na.rm=TRUE)), 
+         col="black", lty=4, lwd=2.0)
+  dev.off()
+  
+  resOrdered <- temp_res[order(temp_res$pvalue),]
+  write.csv(as.data.frame(resOrdered), file = paste(PATH.OUT, "DEG_species/",STAGE,"_",temp_coef,"_ordered_pvalue_005", "_", DATE,
+                                                    ".csv", sep = ""))
+  
+  resSig <- subset(resOrdered, padj < 0.05)
+  # write.csv(as.data.frame(resSig), file = paste(PATH.OUT,STAGE,"_",
+  # #                                               temp_coef,"_padj_005", "_", DATE, ".csv", sep = ""))
+  L.RES[[temp_string]][["resSig"]] = resSig
+
+  resOrdered_shrink <- temp_shrink[order(temp_shrink$pvalue),]
+  write.csv(as.data.frame(resOrdered_shrink), file = paste(PATH.OUT, "DEG_species/",STAGE,"_",temp_coef,"_ordered_pvalue_005_shrinked_", "_", DATE,
+                                                    ".csv", sep = ""))
+  resSig_shrink <- subset(resOrdered_shrink, padj < 0.05)
+  L.RES[[temp_string]][["resSig_shrink"]] = resSig_shrink
+  
+}
+
+sink()
+```
+
+
+Create pca plots
+```{r}
+
+# pca_plots.R
+source(file = "~/Google_Drive/KFU_RNAseq/R_files/pca_plots.R")
+
+#### Calculating pca values ####
+
+# Variant 2: full dataset:
+pca_data = prcomp(t(expr_matrix))
+
+# calculate PCA component percentages
+pca_data_perc = round( 100 * pca_data$sdev ^ 2 / sum(pca_data$sdev ^ 2), 1)
+
+# define pc for plot
+p1 = 1
+p2 = 2
+
+# extract DataFrame
+df_pca <- f_extract(pca_data, 
+                    sampleTable, 
+                    expr_matrix, 
+                    sampleTable$species, 
+                    sampleTable$jaw, p1, p2)
+# create plot
+mygPlot <- f_ggplot(df_pca, pca_data_perc, p1, p2)
+# show plot
+mygPlot
+
+dev.off()
+
+#### 5. Save plot ####
+
+COND <- paste("transcript_longlist_scale")
+
+ggsave(paste(PATH.OUT,STAGE, "_" , DATE, "_", COND, "_PCAplot.pdf", sep = ""), 
+       mygPlot, 
+       width = 8,
+       height = 8, 
+       units = "in")
+
+#### 6. Dendrogram ####
+
+
+# dendrogram corelation:
+pdf(paste(PATH.OUT,STAGE, "_",COND, "_", DATE,"_dendrogram.pdf", sep = ""))
+hc <- hclust(as.dist(1-cor(expr_matrix)))
+plot(hc)
+dev.off()
+
+#### 7. Scree plot ####
+
+pdf(paste(PATH.OUT,STAGE, "_",COND, "_", DATE,"_screeplot.pdf", sep = ""))
+screeplot(pca_data, type = "lines")
+dev.off()
+
+#calculate total variance explained by each principal component
+var_explained = pca_data$sdev^2 / sum(pca_data$sdev^2)
+
+#create scree plot
+library(ggplot2)
+
+qplot(c(1:50), var_explained) + 
+  geom_line() + 
+  xlab("Principal Component") + 
+  ylab("Variance Explained") +
+  ggtitle("Scree Plot") +
+  ylim(0, 1)
+
+
+#compute standard deviation of each principal component
+std_dev <- pca_data$sdev
+
+#compute variance
+pr_var <- std_dev^2
+
+#check variance of first 10 components
+pr_var[1:10]
+
+#proportion of variance explained
+prop_varex <- pr_var/sum(pr_var)
+prop_varex[1:20]
+
+#scree plot
+pdf(paste(PATH.OUT,STAGE, "_",COND, "_", DATE,"_screeplot_v2.pdf", sep = ""))
+plot(prop_varex, xlab = "Principal Component",
+             ylab = "Proportion of Variance Explained",
+             type = "b")
+dev.off()
+
+
+#cumulative scree plot
+plot(cumsum(prop_varex), xlab = "Principal Component",
+              ylab = "Cumulative Proportion of Variance Explained",
+              type = "b")
+
+```
+
+
+```{r}
+sampleTable1 <- sampleTable %>% 
+  filter(., species != "Ps")
+
+expr_matrix1 <- expr_matrix[,1:40]
+head(expr_matrix1)
+pca_data = prcomp(t(expr_matrix1))
+
+# calculate PCA component percentages
+pca_data_perc = round( 100 * pca_data$sdev ^ 2 / sum(pca_data$sdev ^ 2), 1)
+
+# define pc for plot
+p1 = 1
+p2 = 2
+
+# extract DataFrame
+df_pca <- f_extract(pca_data, 
+                    sampleTable1, 
+                    expr_matrix1, 
+                    sampleTable1$species, 
+                    sampleTable1$jaw, p1, p2)
+# create plot
+mygPlot_HvsC <- f_ggplot(df_pca, pca_data_perc, p1, p2)
+# show plot
+mygPlot_HvsC
+
+dev.off()
+
+#### 5. Save plot ####
+
+COND <- paste("OJvsPJ_longlist_HvsC")
+
+ggsave(paste(PATH.OUT,STAGE, "_" , DATE, "_", COND, "_PCAplot.pdf", sep = ""), 
+       mygPlot_HvsC, 
+       width = 8,
+       height = 8, 
+       units = "in", )
+
+#### 6. Dendrogram ####
+
+# dendrogram corelation:
+pdf(paste(PATH.OUT,STAGE, "_", DATE,"_HvsC_dendrogram.pdf", sep = ""))
+hc <- hclust(as.dist(1-cor(expr_matrix1)))
+plot(hc)
+dev.off()
+
+```
+
+```{r}
+
+pca_data = prcomp(t(expr_matrix2))
+
+# calculate PCA component percentages
+pca_data_perc = round( 100 * pca_data$sdev ^ 2 / sum(pca_data$sdev ^ 2), 1)
+
+# define pc for plot
+p1 = 1
+p2 = 2
+p3 = 3
+p4 = 4
+p5 = 5
+p6 = 6
+
+# extract DataFrame
+df_pca <- f_extract(pca_data, 
+                    sampleTable2, 
+                    expr_matrix2, 
+                    sampleTable2$species, 
+                    sampleTable2$jaw, p1, p2)
+# create plot
+mygPlot_C <- f_ggplot(df_pca, pca_data_perc, p1, p2)
+# show plot
+mygPlot_C
+
+dev.off()
+
+#### 5. Save plot ####
+
+COND <- paste("OJvsPJ_longlist_C")
+
+ggsave(paste(PATH.OUT,STAGE, "_" , DATE, "_", COND, "_PCAplot.pdf", sep = ""), 
+       mygPlot_HvsC, 
+       width = 8,
+       height = 8, 
+       units = "in", )
+
+#### 6. Dendrogram ####
+
+# dendrogram corelation:
+pdf(paste(PATH.OUT,STAGE, "_", DATE,"_C_dendrogram.pdf", sep = ""))
+hc <- hclust(as.dist(1-cor(expr_matrix2)))
+plot(hc)
+dev.off()
+
+```
+
