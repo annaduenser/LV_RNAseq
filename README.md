@@ -1,4 +1,4 @@
-# RNAseq analysis for 'Developmental tinkering of gene regulation facilitated super rapid adaptive radiation'
+# RNAseq analysis for 'Developmental divergence in gene regulation among rapidly radiating cichlid species'
 
 - Assembly and annotation: files used for assembly and annotation (documented in RNAseq_analysis.Rmd)
 
